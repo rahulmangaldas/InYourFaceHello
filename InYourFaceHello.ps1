@@ -86,15 +86,9 @@ function Bring-ToFront([IntPtr]$hwnd) {
     Write-Host "Raised $ProcessName window (hwnd=$hwnd, SetForegroundWindow=$ok)"
 }
 
-# Catch it if it's already open when we start.
-$enumProc = {
-    param($hwnd, $lparam)
-    if (Test-IsTargetWindow $hwnd) { Bring-ToFront $hwnd }
-    return $true
-} -as [EnumWindowsProc]
-[Native]::EnumWindows($enumProc, [IntPtr]::Zero) | Out-Null
-
-# Then watch for it appearing from here on.
+# Register the hook BEFORE the initial scan below, not after - otherwise a
+# window that appears in between the scan and the hook going live would be
+# missed by both.
 $winEventProc = {
     param($hWinEventHook, $eventType, $hwnd, $idObject, $idChild, $idEventThread, $dwmsEventTime)
     if ($idObject -ne 0 -or $idChild -ne 0) { return }
@@ -102,6 +96,18 @@ $winEventProc = {
 } -as [WinEventDelegate]
 
 $hook = [Native]::SetWinEventHook($EVENT_OBJECT_SHOW, $EVENT_OBJECT_SHOW, [IntPtr]::Zero, $winEventProc, 0, 0, ($WINEVENT_OUTOFCONTEXT -bor $WINEVENT_SKIPOWNPROCESS))
+if ($hook -eq [IntPtr]::Zero) {
+    [System.Windows.Forms.MessageBox]::Show("Failed to install the window-event hook - InYourFaceHello will not be able to detect new $ProcessName windows.", "InYourFaceHello", "OK", "Error") | Out-Null
+}
+
+# Catch it if it's already open when we start (may double-raise a window the
+# hook above also just caught - Bring-ToFront is harmless to call twice).
+$enumProc = {
+    param($hwnd, $lparam)
+    if (Test-IsTargetWindow $hwnd) { Bring-ToFront $hwnd }
+    return $true
+} -as [EnumWindowsProc]
+[Native]::EnumWindows($enumProc, [IntPtr]::Zero) | Out-Null
 
 # ---------------- Tray icon ----------------
 $Menu = New-Object System.Windows.Forms.ContextMenuStrip
