@@ -15,8 +15,8 @@ UIPI blocks a lower-integrity process from touching its window at all
 (SetWindowPos/SetForegroundWindow fail with ACCESS_DENIED). The script
 relaunches itself elevated (one UAC prompt) if it isn't already.
 
-Runs headless - no window, no tray icon. Ctrl+C, or close the console
-window, to stop it.
+Runs with a tray icon and no console window. Right-click the tray icon
+and choose Exit to stop it.
 #>
 
 param(
@@ -33,12 +33,12 @@ if (-not $isAdmin) {
     exit
 }
 
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
-
-public struct POINT { public int X; public int Y; }
-public struct MSG { public IntPtr hwnd; public uint message; public IntPtr wParam; public IntPtr lParam; public uint time; public POINT pt; }
 
 public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 public delegate void WinEventDelegate(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint idEventThread, uint dwmsEventTime);
@@ -48,15 +48,13 @@ public static class Native {
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
     [DllImport("user32.dll")] public static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr hmodWinEventProc, WinEventDelegate lpfnWinEventProc, uint idProcess, uint idThread, uint dwFlags);
+    [DllImport("user32.dll")] public static extern bool UnhookWinEvent(IntPtr hWinEventHook);
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
-    [DllImport("user32.dll")] public static extern int GetMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
-    [DllImport("user32.dll")] public static extern bool TranslateMessage(ref MSG lpMsg);
-    [DllImport("user32.dll")] public static extern IntPtr DispatchMessage(ref MSG lpMsg);
     [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
 }
 "@
@@ -105,10 +103,22 @@ $winEventProc = {
 
 $hook = [Native]::SetWinEventHook($EVENT_OBJECT_SHOW, $EVENT_OBJECT_SHOW, [IntPtr]::Zero, $winEventProc, 0, 0, ($WINEVENT_OUTOFCONTEXT -bor $WINEVENT_SKIPOWNPROCESS))
 
-Write-Host "Watching for '$ProcessName' windows. Ctrl+C to stop."
+# ---------------- Tray icon ----------------
+$Menu = New-Object System.Windows.Forms.ContextMenuStrip
+$ExitItem = New-Object System.Windows.Forms.ToolStripMenuItem "Exit"
+$ExitItem.Add_Click({ [System.Windows.Forms.Application]::Exit() })
+$Menu.Items.Add($ExitItem) | Out-Null
 
-$msg = New-Object MSG
-while ([Native]::GetMessage([ref]$msg, [IntPtr]::Zero, 0, 0) -gt 0) {
-    [Native]::TranslateMessage([ref]$msg) | Out-Null
-    [Native]::DispatchMessage([ref]$msg) | Out-Null
-}
+$TrayIcon = New-Object System.Windows.Forms.NotifyIcon
+$TrayIcon.Icon = [System.Drawing.SystemIcons]::Shield
+$TrayIcon.Text = "InYourFaceHello - watching for $ProcessName"
+$TrayIcon.ContextMenuStrip = $Menu
+$TrayIcon.Visible = $true
+
+[System.Windows.Forms.Application]::add_ApplicationExit({
+    if ($hook -ne [IntPtr]::Zero) { [Native]::UnhookWinEvent($hook) | Out-Null }
+    $TrayIcon.Visible = $false
+    $TrayIcon.Dispose()
+})
+
+[System.Windows.Forms.Application]::Run()
