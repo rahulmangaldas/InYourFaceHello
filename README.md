@@ -12,7 +12,7 @@ The Windows Hello (fingerprint/PIN) prompt runs as `CredentialUIBroker.exe` and 
 powershell -File InYourFaceHello.ps1
 ```
 
-It relaunches itself elevated (one UAC prompt) if needed, then runs headless — no window, no tray icon — watching for the target window and raising it whenever it appears. Ctrl+C, or close the console, to stop it.
+It relaunches itself elevated (one UAC prompt) if needed, then runs with no console window — just a tray icon watching for the target window and raising it whenever it appears. Right-click the tray icon and choose Exit to stop it.
 
 To watch for a different process's window instead, pass `-ProcessName`:
 
