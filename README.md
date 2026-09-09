@@ -1,6 +1,10 @@
 # InYourFaceHello
 
-A minimal [DeskPins](https://efotinis.neocities.org/deskpins/) clone in pure PowerShell — pin any window (including the Windows Hello prompt) always-on-top.
+Forces the Windows Hello / Credential UI prompt to the front and gives it keyboard focus the moment it appears. Pure PowerShell, no dependencies.
+
+## Why
+
+The Windows Hello (fingerprint/PIN) prompt runs as `CredentialUIBroker.exe` and often pops up behind other windows, so you can end up staring at nothing while a prompt you can't see is waiting for input. This watches for that window and raises it automatically.
 
 ## Usage
 
@@ -8,12 +12,14 @@ A minimal [DeskPins](https://efotinis.neocities.org/deskpins/) clone in pure Pow
 powershell -File InYourFaceHello.ps1
 ```
 
-(Windows PowerShell 5.1 runs STA by default; on PowerShell 7 use `pwsh -sta -File InYourFaceHello.ps1`.)
+It relaunches itself elevated (one UAC prompt) if needed, then runs headless — no window, no tray icon — watching for the target window and raising it whenever it appears. Ctrl+C, or close the console, to stop it.
 
-A tray icon appears (it may be tucked into the "Show hidden icons" overflow). Left-click it — or use "Pin a Window" from its right-click menu — to arm pin mode: the cursor turns into a crosshair. Click any window to toggle it always-on-top. Press Esc, or click the tray icon again, to cancel.
+To watch for a different process's window instead, pass `-ProcessName`:
 
-Pinned windows get a small pin glyph overlaid on their corner, and the tray icon's right-click menu lists everything currently pinned above a divider (click an entry to unpin it).
+```
+powershell -File InYourFaceHello.ps1 -ProcessName SomeOtherProcess
+```
 
-Windows are remembered by executable (image) name, not window title, and persist across restarts in `%APPDATA%\InYourFaceHello\settings.json`. On launch, and whenever a new window appears, any window whose process image name is remembered gets auto-pinned — useful for prompts like Windows Hello that reappear under a new window each time and are otherwise easy to lose behind other windows.
+## Why elevation is required
 
-Note: pinning the Windows Hello / Credential UI prompt requires running this script elevated, since it runs at a higher UAC integrity level.
+`CredentialUIBroker` runs at a higher UAC integrity level than a normal process. Windows' UIPI blocks a lower-integrity process from touching its window at all (`SetForegroundWindow` fails silently, `SetWindowPos` fails with `ACCESS_DENIED`), so the script needs to run elevated to be able to raise it.
